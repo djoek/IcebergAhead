@@ -1,7 +1,7 @@
 # IcebergAhead
 
 Demo script that allows you to tweak the weights of a pytorch NN using a midi controller.
-So far this is only tested with a DJ TechTools MIDI Fighter Twister, but something like a FaderFox EC4 should work well
+So far this is only tested with a DJ TechTools MIDI Fighter Twister, but something like a FaderFox EC4 should work as well
 
 ## Technical background
 
