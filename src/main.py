@@ -1,6 +1,5 @@
-from itertools import cycle
+from model import BoundedTitanicNet, test_cases
 
-from model import BoundedTitanicNet
 import torch
 import mido
 import numpy as np
@@ -11,10 +10,10 @@ st.set_page_config(layout="wide")
 
 
 @st.cache_resource
-def get_model():
+def get_model(model_path='./titanic_model.pth'):
     # 1. Create an instance of your model
     _model = BoundedTitanicNet()
-    _checkpoint = torch.load('./titanic_model.pth', map_location='cpu', weights_only=False)
+    _checkpoint = torch.load(model_path, map_location='cpu', weights_only=False)
     _model.load_state_dict(_checkpoint['model_state_dict'])
     _model.eval()
     return _model, _checkpoint
@@ -28,8 +27,10 @@ def get_ports(_midi_controller):
 midi_controller = st.selectbox(label="Pick your midi controller", options=mido.get_input_names(), index=None)
 if midi_controller:
 
-    status = st.status("Getting ready!", expanded=False)
+    status = st.status("Getting ready...", expanded=False)
     model, checkpoint = get_model()
+    scaler = checkpoint['scaler']
+
     status.update(label="Loaded model", state="running")
 
     layers =[
@@ -49,6 +50,9 @@ if midi_controller:
     status.update(label="Listening for midi", state="running")
 
     st.write("Adjust the weights of the layers to change their behavior and observe the results in the test cases below.")
+    st.write("MIDI Channel: 1, CC Control: 0-63, Value Range: 0-127 (mapped to [-2.0, +2.0]")
+
+    # UI elements bootstrap
     c1, c2, c3, c4 = st.columns(4, gap="small")
     with c1:
         layer1_df = st.empty()
@@ -59,9 +63,9 @@ if midi_controller:
     with c4:
         layer4_df = st.empty()
 
-    results_df = st.empty()
+    results_container = st.empty()
 
-    def update_df():
+    def show_layers():
         with layer1_df.container():
             st.subheader("Hidden Layer 1")
             st.dataframe(layers[0].weight.data, width="content", hide_index=True, )
@@ -78,46 +82,36 @@ if midi_controller:
             st.subheader("Hidden Layer 4")
             st.dataframe(layers[3].weight.data, width="content", hide_index=True)
 
-    update_df()
-
-
 
     @st.fragment(run_every=0.1)
     def listen_midi():
         with torch.no_grad():
             for message in in_port.iter_pending():
                 if message.type == 'control_change' and message.channel == 0:
-                    # One unravel call gives you all three indices
+                    status.update(label=f"Received midi Ch:{message.channel} CC:{message.control}", state="running")
+                    # One unravel call gives you all four layers' indices
                     layer_idx, row, col = np.unravel_index(message.control, (4, 4, 4))
                     mapped_value = (message.value - 64) / 32
                     layers[layer_idx].weight[row, col] = mapped_value
-                    update_df()
+                    show_layers()
 
     @st.fragment(run_every=2.0)
-    def update_test_cases():
+    def show_test_cases():
         model.eval()
-        scaler = checkpoint['scaler']
-        from model import test_cases
-
         with torch.no_grad():
-            results = []
-            for case in test_cases:
-                test_input = scaler.transform([case['features']])
-                test_tensor = torch.FloatTensor(test_input)
-                survival_prob = model(test_tensor).item()
-                results.append({
-                    "desc": f"{case['desc']:40s}",
-                    "survival_prob": survival_prob
-                })
+            with results_container.container():
+                st.subheader("Titanic Survival Prediction")
+                for case in test_cases:
+                    test_input = scaler.transform([case['features']])
+                    test_tensor = torch.FloatTensor(test_input)
+                    # Forward pass
+                    survival_prob = model(test_tensor).item()
 
-        with results_df.container():
-            st.subheader("Titanic Survival Prediction")
-            for result in results:
-                st.metric(label=result['desc'], value=result['survival_prob'], format="percent")
-
+                    st.metric(label=f"{case['desc']:40s}", value=survival_prob, format="percent")
 
     listen_midi()
-    update_test_cases()
+    show_layers()
+    show_test_cases()
 
     done = st.button("Done")
     if done:
@@ -125,4 +119,6 @@ if midi_controller:
 
         in_port.close()
         out_port.close()
+
+        st.stop()
 
