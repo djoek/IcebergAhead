@@ -134,7 +134,7 @@ def train_model(model, X_train, y_train, X_test, y_test, epochs=100):
 
     return model
 
-    # Test cases: [pclass, sex, age, fare, family_size, is_alone, embarked_Q, embarked_S]
+# Test cases: [pclass, sex, age, fare, family_size, is_alone, embarked_Q, embarked_S]
 test_cases = [
     {
         'desc': 'Rich young woman in 1st class',
